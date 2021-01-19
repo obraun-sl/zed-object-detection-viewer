@@ -2,6 +2,7 @@
 #include <random>
 #include "cuUtils.h"
 
+#include <opencv2/opencv.hpp>
 #if defined(_DEBUG) && defined(_WIN32)
 #error "This sample should not be built in Debug mode, use RelWithDebInfo if you want to do step by step."
 #endif
@@ -178,6 +179,17 @@ void GLViewer::render() {
         update();
         draw();
         printText();
+
+        std::cout<<" Out Size : "<<this->windowSize.height<<" / "<<this->windowSize.width<<std::endl;
+        cv::Mat image = cv::Mat(1080,1920,CV_8UC4,1);
+        glReadPixels(0, 0,1920,1080, GL_RGBA, GL_UNSIGNED_BYTE, image.data);
+        cv::cvtColor(image,image,cv::COLOR_RGBA2BGRA);
+        cv::flip(image,image,0);
+        char name[128];
+        sprintf(name,"test_%04d.png",f_count);
+        cv::imwrite(name,image);
+
+        f_count++;
         mtx.unlock();
         glutSwapBuffers();
         glutPostRedisplay();
@@ -185,40 +197,46 @@ void GLViewer::render() {
 }
 
 void GLViewer::updateData(sl::Mat image, sl::Mat depth, sl::Objects &obj, sl::Timestamp image_ts) {
-    if (mtx.try_lock()) {
+    //if (mtx.try_lock())
+    mtx.lock();
+    {
 
-        pointCloud_.pushNewPC(image,depth,camera_parameters);
+        pointCloud_.pushNewPC(image,depth,camera_parameters);    // Update point cloud
+
         BBox_obj.clear();
 
         std::vector<sl::ObjectData> objs = obj.object_list;
         objectsName.clear();
 
 
-        for (int i = 0; i < objs.size(); i++) {
-            if (objs[i].tracking_state != sl::OBJECT_TRACKING_STATE::SEARCHING && objs[i].id>=0) {
-                auto bb_ = objs[i].bounding_box;
-                auto pos_ = objs[i].position;
-                ObjectExtPosition ext_pos_;
-                ext_pos_.position = pos_;
-                ext_pos_.timestamp = obj.timestamp;
+        if (objs.size()>0)
+        {
+            for (int i = 0; i < objs.size(); i++) {
+                if (objs[i].tracking_state == sl::OBJECT_TRACKING_STATE::OK && objs[i].id>=0) {
+                    auto bb_ = objs[i].bounding_box;
+                    auto pos_ = objs[i].position;
+                    ObjectExtPosition ext_pos_;
+                    ext_pos_.position = pos_;
+                    ext_pos_.timestamp = obj.timestamp;
 #ifdef WITH_TRAJECTORIES
-                trajectories[objs[i].id].push_back(ext_pos_);
+                    trajectories[objs[i].id].push_back(ext_pos_);
 #endif
-                auto clr_id = generateColorClass(objs[i].id);
-                if (g_showBox && bb_.size()>0) {
-                    BBox_obj.addBoundingBox(bb_,clr_id);
-                }
+                    auto clr_id = generateColorClass(objs[i].id);
+                    if (g_showBox && bb_.size()>0) {
+                        BBox_obj.addBoundingBox(bb_,clr_id);
+                    }
 
-                if (g_showLabel) {
-                    if ( bb_.size()>0) {
-                        objectsName.emplace_back();
-                        objectsName.back().name_lineA = "ID : "+ std::to_string(objs[i].id);
-                        std::stringstream ss_vel;
-                        ss_vel << std::fixed << std::setprecision(1) << objs[i].velocity.norm();
-                        objectsName.back().name_lineB = ss_vel.str()+" m/s";
-                        objectsName.back().color = clr_id;
-                        objectsName.back().position = pos_;
-                        objectsName.back().position.y =(bb_[0].y + bb_[1].y + bb_[2].y + bb_[3].y)/4.f +0.2f;
+                    if (g_showLabel) {
+                        if ( bb_.size()>0) {
+                            objectsName.emplace_back();
+                            objectsName.back().name_lineA = "ID : "+ std::to_string(objs[i].id);
+                            std::stringstream ss_vel;
+                            ss_vel << std::fixed << std::setprecision(1) << objs[i].velocity.norm();
+                            objectsName.back().name_lineB = ss_vel.str()+" m/s";
+                            objectsName.back().color = clr_id;
+                            objectsName.back().position = pos_;
+                            objectsName.back().position.y =(bb_[0].y + bb_[1].y + bb_[2].y + bb_[3].y)/4.f +0.2f;
+                        }
                     }
                 }
             }
@@ -272,7 +290,6 @@ void GLViewer::update() {
         return;
     }
 
-    // Update point cloud
     pointCloud_.update();
     // Update BBox
     BBox_obj.pushToGPU();

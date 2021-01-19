@@ -198,6 +198,7 @@ private:
     ShaderData shader;
     sl::float3 bckgrnd_clr;
 
+    int f_count = 0;
     std::vector<ObjectClassName> objectsName;
 
 #ifdef WITH_TRAJECTORIES
