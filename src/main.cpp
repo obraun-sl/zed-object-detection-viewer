@@ -495,16 +495,17 @@ int main(int argc, char **argv) {
                 //Update GL view
                 b_image.updateGPUfromCPU();
                 b_depth.updateGPUfromCPU();
-               // std::cout<<" tracked_merged_obj : "<<tracked_merged_obj.object_list.size()<<std::endl;
+                std::cout<<" tracked_merged_obj : "<<tracked_merged_obj.object_list.size()<<std::endl;
                 viewer.updateData(b_image,b_depth, tracked_merged_obj,tracked_merged_obj.timestamp);
                 timestamp_queue.pop_front();
-
+                viewer.render();
             }
             else
             {
-                std::cout<<" - No Image - "<<std::endl;
-                std::cout<<" SIZES : "<<objects_map.size()<<" // "<<image_map.size()<<std::endl;
+                //std::cout<<" - No Image - "<<std::endl;
+                //std::cout<<" SIZES : "<<objects_map.size()<<" // "<<image_map.size()<<std::endl;
             }
+
             newFrame=false;
 
 #else

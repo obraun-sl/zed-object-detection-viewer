@@ -1,7 +1,8 @@
 ﻿#include "GLViewer.hpp"
 #include <random>
 #include "cuUtils.h"
-
+#include "GL/osmesa.h"
+#include "GL/glu.h"
 #include <opencv2/opencv.hpp>
 #if defined(_DEBUG) && defined(_WIN32)
 #error "This sample should not be built in Debug mode, use RelWithDebInfo if you want to do step by step."
@@ -54,14 +55,15 @@ GLViewer::~GLViewer() {}
 
 void GLViewer::exit() {
     if (currentInstance_) {
-        pointCloud_.close();
+        //pointCloud_.close();
+        imagehandler_.close();
         available = false;
     }
 }
 
 bool GLViewer::isAvailable() {
-    if (available)
-        glutMainLoopEvent();
+    //if (available)
+      //  glutMainLoopEvent();
     return available;
 }
 
@@ -69,11 +71,11 @@ void CloseFunc(void) { if (currentInstance_) currentInstance_->exit(); }
 
 void GLViewer::init(int argc, char **argv, sl::CameraParameters param) {
 
-    glutInit(&argc, argv);
-    int wnd_w = glutGet(GLUT_SCREEN_WIDTH);
-    int wnd_h = glutGet(GLUT_SCREEN_HEIGHT);
-    int width = wnd_w*0.9;
-    int height = wnd_h*0.9;
+    //glutInit(&argc, argv);
+    int wnd_w = 1920;//glutGet(GLUT_SCREEN_WIDTH);
+    int wnd_h = 1080;//glutGet(GLUT_SCREEN_HEIGHT);
+    int width = wnd_w;//wnd_w*0.9;
+    int height = wnd_h;//wnd_h*0.9;
     if (width > param.image_size.width && height > param.image_size.height) {
         width = param.image_size.width;
         height = param.image_size.height;
@@ -82,17 +84,30 @@ void GLViewer::init(int argc, char **argv, sl::CameraParameters param) {
     camera_parameters = param;
     windowSize.width = width;
     windowSize.height = height;
-    glutInitWindowSize(windowSize.width, windowSize.height);
+    /*glutInitWindowSize(windowSize.width, windowSize.height);
     glutInitWindowPosition(wnd_w*0.05, wnd_h*0.05);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH);
-    glutCreateWindow("ZED Object Detection Viewer");
-    glViewport(0,0,width,height);
+    glutCreateWindow("ZED Object Detection Viewer");*/
+    ctx = OSMesaCreateContextExt( OSMESA_RGBA, 16, 0, 0, NULL );
+    if (!ctx) {
+       printf("OSMesaCreateContext failed!\n");
+       return;
+    }
+
+    bufferGL = (GLubyte*)malloc( width * height * 4);
+    if (!OSMesaMakeCurrent( ctx, bufferGL, GL_UNSIGNED_BYTE, width, height )) {
+        printf("OSMesaMakeCurrent failed!\n");
+        return;
+     }
 
     GLenum err = glewInit();
     if (GLEW_OK != err)
         std::cout << "ERROR: glewInit failed: " << glewGetErrorString(err) << "\n";
 
-    glutSetOption(GLUT_ACTION_ON_WINDOW_CLOSE, GLUT_ACTION_CONTINUE_EXECUTION);
+
+    glViewport(0,0,width,height);
+
+   // glutSetOption(GLUT_ACTION_ON_WINDOW_CLOSE, GLUT_ACTION_CONTINUE_EXECUTION);
     glEnable(GL_DEPTH_TEST);
 
     glEnable(GL_BLEND);
@@ -101,10 +116,13 @@ void GLViewer::init(int argc, char **argv, sl::CameraParameters param) {
     glEnable(GL_LINE_SMOOTH);
     glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
 
-    pointCloudSize = param.image_size;
-    bool err_pc = pointCloud_.initialize(pointCloudSize);
-    if (!err_pc)
+    //pointCloudSize = param.image_size;
+    //bool err_pc = pointCloud_.initialize(pointCloudSize);
+    /*if (!err_pc)
         std::cout << "ERROR: Failed to initialized point cloud"<<std::endl;
+        */
+
+    imagehandler_.initialize(param.image_size);
 
     // Compile and create the shader for 3D objects
     shader.it = Shader(VERTEX_SHADER, FRAGMENT_SHADER);
@@ -129,11 +147,11 @@ void GLViewer::init(int argc, char **argv, sl::CameraParameters param) {
     glDisable(GL_DEPTH_TEST); //avoid occlusion with bbox
 
     // Map glut function on this class methods
-    glutDisplayFunc(GLViewer::drawCallback);
+  /*  glutDisplayFunc(GLViewer::drawCallback);
     glutReshapeFunc(GLViewer::reshapeCallback);
     glutKeyboardFunc(GLViewer::keyPressedCallback);
     glutKeyboardUpFunc(GLViewer::keyReleasedCallback);
-    glutCloseFunc(CloseFunc);
+    glutCloseFunc(CloseFunc);*/
 
     available = true;
 }
@@ -173,26 +191,36 @@ void GLViewer::setRenderCameraProjection(sl::CameraParameters params,float znear
 
 void GLViewer::render() {
     if (available) {
+        if (!OSMesaMakeCurrent( ctx, bufferGL, GL_UNSIGNED_BYTE, windowSize.width, windowSize.height )) {
+            printf("OSMesaMakeCurrent failed!\n");
+            return;
+         }
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glClearColor(bckgrnd_clr.r, bckgrnd_clr.g, bckgrnd_clr.b, 1.f);
+        //glClearColor(bckgrnd_clr.r, bckgrnd_clr.g, bckgrnd_clr.b, 1.f);
         mtx.lock();
         update();
         draw();
         printText();
-
-        std::cout<<" Out Size : "<<this->windowSize.height<<" / "<<this->windowSize.width<<std::endl;
-        cv::Mat image = cv::Mat(1080,1920,CV_8UC4,1);
-        glReadPixels(0, 0,1920,1080, GL_RGBA, GL_UNSIGNED_BYTE, image.data);
-        cv::cvtColor(image,image,cv::COLOR_RGBA2BGRA);
+        glFinish();
+       // std::cout<<" Out Size : "<<this->windowSize.height<<" / "<<this->windowSize.width<<std::endl;
+        cv::Mat image = cv::Mat(1080,1920,CV_8UC4,bufferGL);
+        //glReadPixels(0, 0,1920,1080, GL_RGBA, GL_UNSIGNED_BYTE, image.data);
+        //cv::cvtColor(image,image,cv::COLOR_RGBA2BGRA);
         cv::flip(image,image,0);
         char name[128];
         sprintf(name,"test_%04d.png",f_count);
-        cv::imwrite(name,image);
+        //cv::imwrite(name,image);
 
+        cv::Mat imagelr;
+        cv::resize(image,imagelr,cv::Size(1280,720));
+        cv::imshow("OpenCV Window",imagelr);
+        cv::waitKey(3);
         f_count++;
         mtx.unlock();
-        glutSwapBuffers();
-        glutPostRedisplay();
+
+
+        //glutSwapBuffers();
+        //glutPostRedisplay();
     }
 }
 
@@ -201,8 +229,8 @@ void GLViewer::updateData(sl::Mat image, sl::Mat depth, sl::Objects &obj, sl::Ti
     mtx.lock();
     {
 
-        pointCloud_.pushNewPC(image,depth,camera_parameters);    // Update point cloud
-
+        //pointCloud_.pushNewPC(image,depth,camera_parameters);    // Update point cloud
+        imagehandler_.pushNewImage(image);
         BBox_obj.clear();
 
         std::vector<sl::ObjectData> objs = obj.object_list;
@@ -290,7 +318,8 @@ void GLViewer::update() {
         return;
     }
 
-    pointCloud_.update();
+    //pointCloud_.update();
+    //imagehandler_.
     // Update BBox
     BBox_obj.pushToGPU();
 
@@ -302,7 +331,8 @@ void GLViewer::draw() {
     const sl::Transform vpMatrix = projection_; //simplification : proj * view = proj
 
     glPointSize(1.0);
-    pointCloud_.draw(vpMatrix);
+    //pointCloud_.draw(vpMatrix);
+    imagehandler_.draw();
 
     glUseProgram(shader.it.getProgramId());
     glUniformMatrix4fv(shader.MVP_Mat, 1, GL_TRUE, vpMatrix.m);
@@ -320,6 +350,7 @@ void GLViewer::draw() {
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     BBox_obj.draw(vpMatrix);
     glUseProgram(0);
+
 }
 
 sl::float2 compute3Dprojection(sl::float3 &pt, const sl::Transform &cam, sl::Resolution wnd_size) {
@@ -332,6 +363,7 @@ sl::float2 compute3Dprojection(sl::float3 &pt, const sl::Transform &cam, sl::Res
 }
 
 void GLViewer::printText() {
+#if 0
     const sl::Transform vpMatrix = projection_;
     sl::Resolution wnd_size(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));
     for (auto it : objectsName) {
@@ -349,6 +381,7 @@ void GLViewer::printText() {
         for (int i = 0; i < len; i++)
             glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, string[i]);
     }
+#endif
 }
 
 
@@ -368,7 +401,7 @@ void GLViewer::reshapeCallback(int width, int height) {
 
 void GLViewer::keyPressedCallback(unsigned char c, int x, int y) {
     currentInstance_->keyStates_[c] = KEY_STATE::DOWN;
-    glutPostRedisplay();
+    //glutPostRedisplay();
 }
 
 void GLViewer::keyReleasedCallback(unsigned char c, int x, int y) {
@@ -376,7 +409,7 @@ void GLViewer::keyReleasedCallback(unsigned char c, int x, int y) {
 }
 
 void GLViewer::idle() {
-    glutPostRedisplay();
+    //glutPostRedisplay();
 }
 
 Simple3DObject::Simple3DObject() {
@@ -636,7 +669,7 @@ Shader::Shader(GLchar* vs, GLchar* fs) {
     GLint errorlk(0);
     glGetProgramiv(programId_, GL_LINK_STATUS, &errorlk);
     if (errorlk != GL_TRUE) {
-        std::cout << "ERROR: while linking Shader :" << std::endl;
+        std::cout << "ERROR: while linking Shader :" << errorlk<<std::endl;
         GLint errorSize(0);
         glGetProgramiv(programId_, GL_INFO_LOG_LENGTH, &errorSize);
 
@@ -691,6 +724,89 @@ bool Shader::compile(GLuint &shaderId, GLenum type, GLchar* src) {
     return true;
 }
 
+GLchar* IMAGE_FRAGMENT_SHADER =
+"#version 330 core\n"
+" in vec2 UV;\n"
+" out vec4 color;\n"
+" uniform sampler2D texImage;\n"
+" void main() {\n"
+"	vec2 scaler  =vec2(UV.x,1.f - UV.y);\n"
+"	vec3 rgbcolor = vec3(texture(texImage, scaler).zyx);\n"
+"	vec3 color_rgb = pow(rgbcolor, vec3(1.65f));\n"
+"	color = vec4(color_rgb,1);\n"
+"}";
+
+GLchar* IMAGE_VERTEX_SHADER =
+"#version 330 core\n"
+"layout(location = 0) in vec3 vert;\n"
+"out vec2 UV;"
+"void main() {\n"
+"	UV = (vert.xy+vec2(1,1))* .5f;\n"
+"	gl_Position = vec4(vert, 1);\n"
+"}\n";
+
+
+ImageHandler::ImageHandler() {}
+
+ImageHandler::~ImageHandler() {
+    close();
+}
+
+void ImageHandler::close() {
+    glDeleteTextures(1, &imageTex);
+}
+
+bool ImageHandler::initialize(sl::Resolution res) {
+    shader = Shader(IMAGE_VERTEX_SHADER, IMAGE_FRAGMENT_SHADER);
+    texID = glGetUniformLocation(shader.getProgramId(), "texImage");
+    static const GLfloat g_quad_vertex_buffer_data[] = {
+        -1.0f, -1.0f, 0.0f,
+        1.0f, -1.0f, 0.0f,
+        -1.0f, 1.0f, 0.0f,
+        -1.0f, 1.0f, 0.0f,
+        1.0f, -1.0f, 0.0f,
+        1.0f, 1.0f, 0.0f };
+
+    glGenBuffers(1, &quad_vb);
+    glBindBuffer(GL_ARRAY_BUFFER, quad_vb);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(g_quad_vertex_buffer_data), g_quad_vertex_buffer_data, GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    glEnable(GL_TEXTURE_2D);
+    glGenTextures(1, &imageTex);
+    glBindTexture(GL_TEXTURE_2D, imageTex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, res.width, res.height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, NULL);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return 0;
+}
+
+void ImageHandler::pushNewImage(sl::Mat &image) {
+    image.updateCPUfromGPU();
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,image.getWidth(), image.getHeight(), 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, image.getPtr<sl::uchar1>(sl::MEM::CPU));
+}
+
+void ImageHandler::draw() {
+    const auto id_shade = shader.getProgramId();
+    glUseProgram(id_shade);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, imageTex);
+    glUniform1i(texID, 0);
+    //invert y axis and color for this image (since its reverted from cuda array)
+
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, quad_vb);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glDisableVertexAttribArray(0);
+    glUseProgram(0);
+}
+
+
 GLchar* POINTCLOUD_VERTEX_SHADER =
         "#version 330 core\n"
         "layout(location = 0) in vec4 in_VertexRGBA;\n"
@@ -736,24 +852,28 @@ bool PointCloud::initialize(sl::Resolution res) {
     shader.MVP_Mat = glGetUniformLocation(shader.it.getProgramId(), "u_mvpMatrix");
     matGPU_.alloc(res, sl::MAT_TYPE::F32_C4, sl::MEM::GPU);
 
-    cudaError_t err = cudaGraphicsGLRegisterBuffer(&bufferCudaID_, bufferGLID_, cudaGraphicsRegisterFlagsNone);
-    err = cudaGraphicsMapResources(1, &bufferCudaID_, 0);
-    err = cudaGraphicsResourceGetMappedPointer((void**)&xyzrgbaMappedBuf_, &numBytes_, bufferCudaID_);
-    return (err==cudaSuccess);
+    int err = (int)cudaGraphicsGLRegisterBuffer(&bufferCudaID_, bufferGLID_, cudaGraphicsRegisterFlagsNone);
+    std::cout<<" Error A : "<<err<<std::endl;
+    err += (int)cudaGraphicsMapResources(1, &bufferCudaID_, 0);
+    err += (int)cudaGraphicsResourceGetMappedPointer((void**)&xyzrgbaMappedBuf_, &numBytes_, bufferCudaID_);
+    return (err==0);
 }
 
 void PointCloud::pushNewPC(sl::Mat &image, sl::Mat& depth, sl::CameraParameters cam_params)
 {
+            std::cout<<" pushNewPC? : "<<hasNewPCL_<<" ; "<<matGPU_.isInit()<<std::endl;
     if (matGPU_.isInit()) {
         // CUDA code to convert Image + Z Buffer into single point cloud
         // It was possible to do it also on a GLSL shader, but... just a choice.
         hasNewPCL_ = triangulateImageandZ(matGPU_,image,depth,cam_params);
+        std::cout<<" pushNewPC? : "<<hasNewPCL_<<" ; "<<matGPU_.isInit()<<std::endl;
     }
 }
 
 void PointCloud::update() {
+    std::cout<<" Update? : "<<hasNewPCL_<<" ; "<<matGPU_.isInit()<<std::endl;
     if (hasNewPCL_ && matGPU_.isInit()) {
-        cudaMemcpy(xyzrgbaMappedBuf_, matGPU_.getPtr<sl::float4>(sl::MEM::GPU), numBytes_, cudaMemcpyDeviceToDevice);
+        cudaError_t err= cudaMemcpy(xyzrgbaMappedBuf_, matGPU_.getPtr<sl::float4>(sl::MEM::GPU), numBytes_, cudaMemcpyDeviceToDevice);
         hasNewPCL_ = false;
     }
 }
@@ -770,6 +890,7 @@ void PointCloud::draw(const sl::Transform& vp) {
         glDrawArrays(GL_POINTS, 0, matGPU_.getResolution().area());
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glUseProgram(0);
+        std::cout<<" Render Image"<<glGetError()<<std::endl;;
     }
 }
 

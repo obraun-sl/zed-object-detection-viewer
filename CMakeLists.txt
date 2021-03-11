@@ -20,7 +20,7 @@ SET(SPECIAL_OS_LIBS "")
 find_package(ZED 3 REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(GLUT REQUIRED)
-find_package(GLEW REQUIRED)
+find_package(GLEW 2.2 REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(CUDA REQUIRED)
 
@@ -37,12 +37,14 @@ include_directories(${CUDA_INCLUDE_DIRS})
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
+message("GLEW lib dir : ${GLEW_LIBRARY_DIRS}")
 link_directories(${ZED_LIBRARY_DIR})
-link_directories(${GLEW_LIBRARY_DIRS})
 link_directories(${GLUT_LIBRARY_DIRS})
 link_directories(${OpenGL_LIBRARY_DIRS})
 link_directories(${CUDA_LIBRARY_DIRS})
 link_directories(${OpenCV_LIBRARY_DIRS})
+link_directories("/usr/lib64/")
+
 
 FILE(GLOB_RECURSE SRC_FILES src/*.c*)
 FILE(GLOB_RECURSE HDR_FILES include/*.h*)
@@ -50,7 +52,7 @@ FILE(GLOB_RECURSE HDR_FILES include/*.h*)
 set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -std=c++14)
 cuda_add_executable(${execName} ${HDR_FILES} ${SRC_FILES})
 
-add_definitions(-std=c++14 -O2)
+add_definitions(-std=c++14 -O2 -DGLEW_OSMESA)
 
 if (LINK_SHARED_ZED)
     SET(ZED_LIBS ${ZED_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUDART_LIBRARY} ${CUDA_DEP_LIBRARIES_ZED})
@@ -61,8 +63,8 @@ endif()
 target_link_libraries(${execName}
                         ${SPECIAL_OS_LIBS}
                         ${ZED_LIBS}
-                        ${OPENGL_LIBRARIES}
-                        ${GLUT_LIBRARY}
-                        ${GLEW_LIBRARIES}
+                        OSMesa
+                        GLEW
+                        ${GLUT_LIBRARIES}
                         ${OpenCV_LIBRARIES}
                         ${CUDA_CUDA_LIBRARY} ${CUDA_CUDART_LIBRARY} ${CUDA_DEP_LIBRARIES_ZED} )

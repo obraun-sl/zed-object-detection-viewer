@@ -8,10 +8,17 @@
 #include <vector>
 #include <sl/Camera.hpp>
 
+
 #include <GL/glew.h>
-#include <GL/freeglut.h>
-#include <GL/gl.h>
-#include <GL/glut.h>   /* OpenGL Utility Toolkit header */
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#ifndef GLAPI
+#define GLAPI
+#endif
+#include "GL/osmesa.h"
+#include "GL/glu.h"
 
 #include <cuda.h>
 #include <cuda_gl_interop.h>
@@ -20,7 +27,7 @@
 #define M_PI 3.141592653f
 #endif
 
-//#define WITH_TRAJECTORIES
+#define WITH_TRAJECTORIES
 
 class Shader {
 public:
@@ -99,6 +106,28 @@ private:
     sl::Orientation rotation_;
 };
 
+class ImageHandler {
+public:
+    ImageHandler();
+    ~ImageHandler();
+
+    // Initialize Opengl and Cuda buffers
+    bool initialize(sl::Resolution res);
+    // Push a new Image + Z buffer and transform into a point cloud
+    void pushNewImage(sl::Mat &image);
+    // Draw the Image
+    void draw();
+    // Close (disable update)
+    void close();
+
+private:
+    GLuint texID;
+    GLuint imageTex;
+    cudaGraphicsResource* cuda_gl_ressource;//cuda GL resource
+    Shader shader;
+    GLuint quad_vb;
+};
+
 class PointCloud {
 public:
     PointCloud();
@@ -146,12 +175,12 @@ public:
 
     void init(int argc, char **argv, sl::CameraParameters param);
     void updateData(sl::Mat image,sl::Mat depth, sl::Objects &obj,sl::Timestamp image_ts);
-
+    // Rendering loop method called each frame by glutDisplayFunc
+    void render();
     void exit();
 
 private:
-    // Rendering loop method called each frame by glutDisplayFunc
-    void render();
+
     // Everything that needs to be updated before rendering must be done in this method
     void update();
     // Once everything is updated, every renderable objects must be drawn in this method
@@ -169,6 +198,8 @@ private:
     static void keyPressedCallback(unsigned char c, int x, int y);
     static void keyReleasedCallback(unsigned char c, int x, int y);
     static void idle();
+
+    OSMesaContext ctx;
 
     bool available;
 
@@ -193,11 +224,13 @@ private:
 
     sl::Transform projection_;
 
-    PointCloud pointCloud_;
+    //PointCloud pointCloud_;
+    ImageHandler imagehandler_;
 
     ShaderData shader;
     sl::float3 bckgrnd_clr;
 
+    GLubyte* bufferGL;
     int f_count = 0;
     std::vector<ObjectClassName> objectsName;
 
@@ -209,7 +242,7 @@ private:
     Simple3DObject BBox_obj;
 
     sl::Resolution windowSize;
-    sl::Resolution pointCloudSize;
+    //sl::Resolution pointCloudSize;
 
     sl::CameraParameters camera_parameters;
     bool g_showBox=true;
